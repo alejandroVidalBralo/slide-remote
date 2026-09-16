@@ -143,6 +143,50 @@
   }
   .small-btn:active { background: var(--accent); color: var(--accent-text); }
 
+  .tabs {
+    width: 100%;
+    max-width: 360px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 18px;
+    opacity: 0.4;
+    pointer-events: none;
+    transition: opacity 0.2s;
+  }
+  .tabs.enabled { opacity: 1; pointer-events: auto; }
+  .tab-btn {
+    padding: 10px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--muted);
+    border-radius: 12px;
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+  .tab-btn.active { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+
+  .panel { width: 100%; max-width: 360px; }
+  .panel[hidden] { display: none; }
+
+  .laser-pad {
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    border: 2px dashed var(--border);
+    border-radius: 18px;
+    background: var(--surface);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.85rem;
+    padding: 16px;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
   #log {
     margin-top: 28px;
     font-size: 0.75rem;
@@ -174,19 +218,30 @@
 
   <button id="connectBtn">Conectar</button>
 
-  <div class="pad" id="pad">
-    <button class="big-btn" id="prevBtn" data-code="2">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
-      Anterior
-    </button>
-    <button class="big-btn" id="nextBtn" data-code="1">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
-      Siguiente
-    </button>
-    <div class="row2">
-      <button class="small-btn" id="startBtn" data-code="3">Iniciar (F5)</button>
-      <button class="small-btn" id="exitBtn" data-code="4">Salir (Esc)</button>
+  <div class="tabs" id="tabs">
+    <button class="tab-btn active" id="tabMandoBtn">Mando</button>
+    <button class="tab-btn" id="tabLaserBtn">Laser</button>
+  </div>
+
+  <div class="panel" id="panelMando">
+    <div class="pad" id="pad">
+      <button class="big-btn" id="prevBtn" data-code="2">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+        Anterior
+      </button>
+      <button class="big-btn" id="nextBtn" data-code="1">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+        Siguiente
+      </button>
+      <div class="row2">
+        <button class="small-btn" id="startBtn" data-code="3">Iniciar (F5)</button>
+        <button class="small-btn" id="exitBtn" data-code="4">Salir (Esc)</button>
+      </div>
     </div>
+  </div>
+
+  <div class="panel" id="panelLaser" hidden>
+    <div class="laser-pad" id="laserPad">Desliza el dedo aqui para mover el puntero laser</div>
   </div>
 
   <div id="log"></div>
@@ -200,7 +255,21 @@
   const statusText = document.getElementById("statusText");
   const connectBtn = document.getElementById("connectBtn");
   const pad = document.getElementById("pad");
+  const tabs = document.getElementById("tabs");
+  const tabMandoBtn = document.getElementById("tabMandoBtn");
+  const tabLaserBtn = document.getElementById("tabLaserBtn");
+  const panelMando = document.getElementById("panelMando");
+  const panelLaser = document.getElementById("panelLaser");
+  const laserPad = document.getElementById("laserPad");
   const log = document.getElementById("log");
+
+  const CMD_NEXT = 0x01;
+  const CMD_PREV = 0x02;
+  const CMD_START = 0x03;
+  const CMD_EXIT = 0x04;
+  const CMD_LASER_MOVE = 0x10;
+  const CMD_LASER_SHOW = 0x11;
+  const CMD_LASER_HIDE = 0x12;
 
   let characteristic = null;
   let device = null;
@@ -238,6 +307,7 @@
       setStatus("connected", "Conectado a " + (device.name || "PC"));
       connectBtn.classList.add("hidden");
       pad.classList.add("enabled");
+      tabs.classList.add("enabled");
       setLog("");
     } catch (err) {
       setStatus("", "Desconectado");
@@ -250,25 +320,87 @@
     setStatus("", "Desconectado");
     connectBtn.classList.remove("hidden");
     pad.classList.remove("enabled");
+    tabs.classList.remove("enabled");
     setLog("Se perdio la conexion. Pulsa Conectar de nuevo.");
   }
 
-  async function send(code) {
+  async function send(bytes) {
     if (!characteristic) return;
     try {
-      await characteristic.writeValueWithoutResponse(new Uint8Array([code]));
+      await characteristic.writeValueWithoutResponse(bytes);
     } catch (err) {
       try {
-        await characteristic.writeValue(new Uint8Array([code]));
+        await characteristic.writeValue(bytes);
       } catch (err2) {
         setLog("Error al enviar: " + (err2.message || err2));
       }
     }
   }
 
+  function sendByte(code) {
+    send(new Uint8Array([code]));
+  }
+
+  function packLaserMove(x, y) {
+    const xi = Math.round(x * 65535);
+    const yi = Math.round(y * 65535);
+    return new Uint8Array([
+      CMD_LASER_MOVE,
+      (xi >> 8) & 0xff,
+      xi & 0xff,
+      (yi >> 8) & 0xff,
+      yi & 0xff,
+    ]);
+  }
+
+  function laserPosFromEvent(e) {
+    const rect = laserPad.getBoundingClientRect();
+    let x = (e.clientX - rect.left) / rect.width;
+    let y = (e.clientY - rect.top) / rect.height;
+    x = Math.min(1, Math.max(0, x));
+    y = Math.min(1, Math.max(0, y));
+    return [x, y];
+  }
+
+  let lastLaserSend = 0;
+
+  laserPad.addEventListener("pointerdown", (e) => {
+    laserPad.setPointerCapture(e.pointerId);
+    sendByte(CMD_LASER_SHOW);
+    const [x, y] = laserPosFromEvent(e);
+    send(packLaserMove(x, y));
+  });
+
+  laserPad.addEventListener("pointermove", (e) => {
+    if (e.buttons === 0) return;
+    const now = performance.now();
+    if (now - lastLaserSend < 40) return;
+    lastLaserSend = now;
+    const [x, y] = laserPosFromEvent(e);
+    send(packLaserMove(x, y));
+  });
+
+  function endLaser() {
+    sendByte(CMD_LASER_HIDE);
+  }
+  laserPad.addEventListener("pointerup", endLaser);
+  laserPad.addEventListener("pointercancel", endLaser);
+  laserPad.addEventListener("pointerleave", endLaser);
+
+  function showTab(tab) {
+    const mando = tab === "mando";
+    panelMando.hidden = !mando;
+    panelLaser.hidden = mando;
+    tabMandoBtn.classList.toggle("active", mando);
+    tabLaserBtn.classList.toggle("active", !mando);
+    if (mando) endLaser();
+  }
+  tabMandoBtn.addEventListener("click", () => showTab("mando"));
+  tabLaserBtn.addEventListener("click", () => showTab("laser"));
+
   connectBtn.addEventListener("click", connect);
   document.querySelectorAll("[data-code]").forEach((btn) => {
-    btn.addEventListener("click", () => send(Number(btn.dataset.code)));
+    btn.addEventListener("click", () => sendByte(Number(btn.dataset.code)));
   });
 })();
 </script>
