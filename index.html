@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mando de diapositivas</title>
+<style>
+  :root {
+    --bg: #f4f5f7;
+    --surface: #ffffff;
+    --text: #1a1d23;
+    --muted: #6b7280;
+    --accent: #2563eb;
+    --accent-text: #ffffff;
+    --border: #e5e7eb;
+    --danger: #dc2626;
+    --ok: #16a34a;
+    color-scheme: light dark;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #101317;
+      --surface: #1a1f26;
+      --text: #f2f3f5;
+      --muted: #9aa3af;
+      --accent: #3b82f6;
+      --accent-text: #ffffff;
+      --border: #2a3038;
+      --danger: #f87171;
+      --ok: #4ade80;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, system-ui, Segoe UI, Roboto, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px 16px 32px;
+  }
+  h1 {
+    font-size: 1.05rem;
+    font-weight: 600;
+    margin: 8px 0 4px;
+    text-align: center;
+  }
+  .subtitle {
+    color: var(--muted);
+    font-size: 0.85rem;
+    margin: 0 0 20px;
+    text-align: center;
+  }
+  .status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 8px 16px;
+    font-size: 0.85rem;
+    margin-bottom: 24px;
+  }
+  .dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--danger);
+    flex-shrink: 0;
+  }
+  .dot.connected { background: var(--ok); }
+  .dot.connecting {
+    background: #f59e0b;
+    animation: pulse 1s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+  #connectBtn {
+    width: 100%;
+    max-width: 360px;
+    padding: 16px;
+    font-size: 1rem;
+    font-weight: 600;
+    border-radius: 14px;
+    border: none;
+    background: var(--accent);
+    color: var(--accent-text);
+    margin-bottom: 28px;
+  }
+  #connectBtn:active { opacity: 0.8; }
+  #connectBtn.hidden { display: none; }
+
+  .pad {
+    width: 100%;
+    max-width: 360px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    opacity: 0.4;
+    pointer-events: none;
+    transition: opacity 0.2s;
+  }
+  .pad.enabled { opacity: 1; pointer-events: auto; }
+
+  .big-btn {
+    aspect-ratio: 1 / 0.8;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    border-radius: 18px;
+    color: var(--text);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 0.95rem;
+    font-weight: 600;
+  }
+  .big-btn:active { background: var(--accent); color: var(--accent-text); }
+  .big-btn svg { width: 34px; height: 34px; }
+
+  .row2 {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-top: 4px;
+  }
+  .small-btn {
+    padding: 14px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    border-radius: 14px;
+    color: var(--muted);
+    font-size: 0.85rem;
+    font-weight: 500;
+  }
+  .small-btn:active { background: var(--accent); color: var(--accent-text); }
+
+  #log {
+    margin-top: 28px;
+    font-size: 0.75rem;
+    color: var(--muted);
+    text-align: center;
+    max-width: 360px;
+    min-height: 1.2em;
+  }
+  .unsupported {
+    max-width: 360px;
+    text-align: center;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px;
+    font-size: 0.9rem;
+    line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+  <h1>Mando de diapositivas</h1>
+  <p class="subtitle">Conecta por Bluetooth con el PC (SlideRemote-PC)</p>
+
+  <div class="status">
+    <span class="dot" id="dot"></span>
+    <span id="statusText">Desconectado</span>
+  </div>
+
+  <button id="connectBtn">Conectar</button>
+
+  <div class="pad" id="pad">
+    <button class="big-btn" id="prevBtn" data-code="2">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+      Anterior
+    </button>
+    <button class="big-btn" id="nextBtn" data-code="1">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+      Siguiente
+    </button>
+    <div class="row2">
+      <button class="small-btn" id="startBtn" data-code="3">Iniciar (F5)</button>
+      <button class="small-btn" id="exitBtn" data-code="4">Salir (Esc)</button>
+    </div>
+  </div>
+
+  <div id="log"></div>
+
+<script>
+(function () {
+  const SERVICE_UUID = "bc6a428d-134f-48d0-b097-5ee6c4a89ba9";
+  const CHAR_UUID = "1c2d9c03-ae5b-4dad-b9c9-8236b88b5f70";
+
+  const dot = document.getElementById("dot");
+  const statusText = document.getElementById("statusText");
+  const connectBtn = document.getElementById("connectBtn");
+  const pad = document.getElementById("pad");
+  const log = document.getElementById("log");
+
+  let characteristic = null;
+  let device = null;
+
+  function setStatus(state, text) {
+    dot.className = "dot" + (state ? " " + state : "");
+    statusText.textContent = text;
+  }
+
+  function setLog(text) {
+    log.textContent = text;
+  }
+
+  if (!navigator.bluetooth) {
+    document.body.innerHTML =
+      '<div class="unsupported">Este navegador no soporta Web Bluetooth.<br><br>' +
+      "Abre esta pagina con <b>Google Chrome en Android</b> " +
+      "(Safari / iPhone no es compatible).</div>";
+    return;
+  }
+
+  async function connect() {
+    try {
+      setStatus("connecting", "Buscando PC...");
+      device = await navigator.bluetooth.requestDevice({
+        filters: [{ services: [SERVICE_UUID] }],
+      });
+      device.addEventListener("gattserverdisconnected", onDisconnected);
+
+      setStatus("connecting", "Conectando...");
+      const server = await device.gatt.connect();
+      const service = await server.getPrimaryService(SERVICE_UUID);
+      characteristic = await service.getCharacteristic(CHAR_UUID);
+
+      setStatus("connected", "Conectado a " + (device.name || "PC"));
+      connectBtn.classList.add("hidden");
+      pad.classList.add("enabled");
+      setLog("");
+    } catch (err) {
+      setStatus("", "Desconectado");
+      setLog(err.message || String(err));
+    }
+  }
+
+  function onDisconnected() {
+    characteristic = null;
+    setStatus("", "Desconectado");
+    connectBtn.classList.remove("hidden");
+    pad.classList.remove("enabled");
+    setLog("Se perdio la conexion. Pulsa Conectar de nuevo.");
+  }
+
+  async function send(code) {
+    if (!characteristic) return;
+    try {
+      await characteristic.writeValueWithoutResponse(new Uint8Array([code]));
+    } catch (err) {
+      try {
+        await characteristic.writeValue(new Uint8Array([code]));
+      } catch (err2) {
+        setLog("Error al enviar: " + (err2.message || err2));
+      }
+    }
+  }
+
+  connectBtn.addEventListener("click", connect);
+  document.querySelectorAll("[data-code]").forEach((btn) => {
+    btn.addEventListener("click", () => send(Number(btn.dataset.code)));
+  });
+})();
+</script>
+</body>
+</html>
