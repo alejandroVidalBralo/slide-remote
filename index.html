@@ -413,6 +413,7 @@
 
   let characteristic = null;
   let device = null;
+  let reconnecting = false;
 
   function setStatus(state, text) {
     dot.className = "dot" + (state ? " " + state : "");
@@ -428,6 +429,25 @@
     return;
   }
 
+  function markConnected() {
+    setStatus("connected", "Conectado a " + (device.name || "PC"));
+    connectBtn.classList.add("hidden");
+    content.classList.add("enabled");
+    bottomNav.classList.add("enabled");
+    setLog("");
+  }
+
+  function markFullyDisconnected(message) {
+    characteristic = null;
+    setStatus("", "Desconectado");
+    connectBtn.classList.remove("hidden");
+    content.classList.remove("enabled");
+    bottomNav.classList.remove("enabled");
+    setLog(message);
+  }
+
+  function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+
   async function connect() {
     try {
       setStatus("connecting", "Buscando PC...");
@@ -440,25 +460,38 @@
       const server = await device.gatt.connect();
       const service = await server.getPrimaryService(SERVICE_UUID);
       characteristic = await service.getCharacteristic(CHAR_UUID);
-
-      setStatus("connected", "Conectado a " + (device.name || "PC"));
-      connectBtn.classList.add("hidden");
-      content.classList.add("enabled");
-      bottomNav.classList.add("enabled");
-      setLog("");
+      markConnected();
     } catch (err) {
       setStatus("", "Desconectado");
       setLog(err.message || String(err));
     }
   }
 
-  function onDisconnected() {
+  // Los cortes de BLE son habituales (pantalla bloqueada, fuera de alcance...).
+  // En vez de obligar a pulsar Conectar cada vez, se reintenta solo unas
+  // cuantas veces antes de rendirse y pedir accion manual.
+  async function onDisconnected() {
     characteristic = null;
-    setStatus("", "Desconectado");
-    connectBtn.classList.remove("hidden");
-    content.classList.remove("enabled");
-    bottomNav.classList.remove("enabled");
-    setLog("Se perdio la conexion. Pulsa Conectar de nuevo.");
+    if (reconnecting || !device) return;
+    reconnecting = true;
+
+    const MAX_ATTEMPTS = 6;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      setStatus("connecting", `Reconectando (${attempt}/${MAX_ATTEMPTS})...`);
+      try {
+        const server = await device.gatt.connect();
+        const service = await server.getPrimaryService(SERVICE_UUID);
+        characteristic = await service.getCharacteristic(CHAR_UUID);
+        markConnected();
+        reconnecting = false;
+        return;
+      } catch (err) {
+        await sleep(1500 * attempt);
+      }
+    }
+
+    reconnecting = false;
+    markFullyDisconnected("Se perdio la conexion. Pulsa Conectar de nuevo.");
   }
 
   async function send(bytes) {
